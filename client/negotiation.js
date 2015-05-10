@@ -9,24 +9,40 @@ _.extend(Negotiations,{
     if (Meteor.userId===null) {
       throw Meteor.Error("not-allowed","You must be signed-up to perform a negotiation");
     }
-    Match.check(buid,OfferJar.UI.uidCheck);
-    Match.check(bid,Match.Optional(Match.OneOf(Number,Currency.LegalMoneyString)));
-    Match.check(partnerUID,Match.Optional(OfferJar.UI.uidCheck));
+    check(buid,OfferJar.UI.uidCheck);
+    check(bid,Match.Optional(Match.OneOf(Number,Currency.LegalMoneyString)));
+    check(partnerUID,Match.Optional(OfferJar.UI.uidCheck));
     Meteor.call('initiateBuyerNegotiation',buid,bid,partnerUID,callback);
   },
-  subscribeNegotiationInfo: function(negotiationId) {
-    Meteor.subscribe("offerjar.negotiations.info",negotiationId);
+  subscribeNegotiationInfo: function(negotiationId,callbacks) {
+    return Meteor.subscribe("offerjar.negotiations.info",negotiationId,callbacks);
   }
 });
 
+OfferJar.UI.currentNegotiation = new ReactiveVar(null,twoOfferJarRecordsEq('uid','bid','otherBid','finalPrice','state'));
 
-Meteor.subscribe("offerjar.negotiations");
+negotiationInfoSubscriptionReady = new ReactiveVar(false);
 
-OfferJar.UI.currentNegotiation = new ReactiveVar(null,twoOfferJarRecordsEq);
-
-if (OfferJar.UI.keepAllMessages || OfferJar.UI.keepHistory) {
-  Tracker.autorun(function () {
-      var negotiation = OfferJar.UI.currentNegotiation.get();
-      Negotiations.subscribeNegotiationInfo(negotiation._id);
+Meteor.startup(function() {
+  Tracker.autorun(function() {
+    Meteor.subscribe("offerjar.negotiations");
   });
-}
+
+  var subscribedNegotiationId = null;
+  Tracker.autorun(function () {
+      negotiationInfoSubscriptionReady.set(false);
+      var negotiation = OfferJar.UI.currentNegotiation.get();
+      if (negotiation && (_.isNull(subscribedNegotiationId) || subscribedNegotiationId!==negotiation._id)) {
+        subscribedNegotiationId = negotiation._id;
+        Negotiations.subscribeNegotiationInfo(negotiation._id,{
+          onReady: function() {
+            negotiationInfoSubscriptionReady.set(true);
+          },
+          onStop: function() {
+            subscribedNegotiationId = null;
+            negotiationInfoSubscriptionReady.set(false);
+          }
+        });
+      }
+  });
+});

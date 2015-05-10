@@ -30,7 +30,7 @@ Conversations.findUserConversation = function(userId,partner) {
     partner = PartnerProxy.get(partner);
   }
 
-  return _.first(Conversations.find({ userId: userId, partnerUID: partner.uid}, { limit: 1 }));
+  return Conversations.findOne({ userId: userId, partnerUID: partner.uid});
 }
 
 ConversationProxy.findUserConversationProxy = function(userId,partner) {
@@ -60,7 +60,7 @@ ConversationProxy.prototype.releaseConversationHash = function() {
 
 ConversationProxy.get = function(uid) {
   if (_.has(conversationsProxiesHash,uid)) {
-    var conversations_proxy = conversationsProxiesHash[conversation.uid];
+    var conversations_proxy = conversationsProxiesHash[uid];
     conversations_proxy._conversationProxyHashRef++;
     return conversations_proxy;
   } else {
@@ -82,7 +82,7 @@ ConversationProxy.findOrCreateUserConversationProxy = function(userId,partner) {
   var service_record = partner.affiliateUser(user);
   
   var conversationProxy = new ConversationProxy();
-  conversationProxy.create_by_token(service_record.token,{
+  conversationProxy.createByToken(service_record.token,{
     notification_mode: 'push',
     webhook: OfferJar.UI.webhook.url()
   });

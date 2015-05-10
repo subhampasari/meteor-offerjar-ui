@@ -23,19 +23,49 @@ _.extend(Negotiations,{
     }
     
     negRec = negRec.negotiation;
-    var upsertRet = Negotiations.upsert({uid: negRec.nuid},{
-      uid: negRec.nuid,
-      buid: buid,
-      cuid: conversationProxy.uid,
-      bidderId: buyerId,
-      state: negRec.state,
-      availableTransitions: negRec.available_transitions,
-      bid: negRec.bids && negRec.bids.your_bid,
-      otherBid: negRec.bids && negRec.bids.counter_bid || negRec.final && negRec.final.price,
-      saving: negRec.bids && negRec.bids.saving || negRec.final && ngeRec.final.saving,
-      partnerUID: partnerProxy.uid,
-      kind: 'buy'
-    });
+    
+    // Working with Schema and upsert does not work well
+    var negotiation = Negotiations.findOne({uid: negRec.nuid });
+    var ret;
+    console.log("negRec: ",negRec);
+    if (negotiation) {
+      var set = {
+        state: negRec.state,
+        availableTransitions: negRec.available_transitions,
+        otherBid: negRec.bids && Currency.parseStr(negRec.bids.counter_bid) || negRec.final && Currency.parseStr(negRec.final.price),
+        saving: negRec.bids && Currency.parseStr(negRec.bids.saving) || negRec.final && Currency.parseStr(negRec.final.saving),
+        currency: negRec.button && negRec.button.currency,
+        title: negRec.button.title
+      };
+      if (negRec.bids && negRec.bids.your_bid) {
+        set.bid = Currency.parseStr(negRec.bids.your_bid);
+      }
+      console.log("Setting negotiation: ",set);
+      ret = Negotiations.update({uid: negRec.nuid},{
+        $set: set
+      }) ;
+    } else {
+      var insert = {
+        uid: negRec.nuid,
+        buid: buid,
+        cuid: conversationProxy.uid,
+        bidderId: buyerId,
+        state: negRec.state,
+        availableTransitions: negRec.available_transitions,
+        otherBid: negRec.bids && Currency.parseStr(negRec.bids.counter_bid) || negRec.final && Currency.parseStr(negRec.final.price),
+        saving: negRec.bids && Currency.parseStr(negRec.bids.saving) || negRec.final && Currency.parseStr(negRec.final.saving),
+        partnerUID: partnerProxy.uid,
+        kind: 'buy',
+        currency: negRec.button && negRec.button.currency,
+        title: negRec.button.title
+      }
+      if (negRec.bids && negRec.bids.your_bid) {
+        insert.bid = Currency.parseStr(negRec.bids.your_bid);
+      }
+      console.log("Inserting negotiation: ",insert);
+      ret = Negotiations.insert(insert);
+    }
+    Negotiations.refreshNegotiation(negRec.nuid,'buy');
     return negRec.nuid;
   },
   remoteTransition: function(buyerId,transition,parameters) {
@@ -45,47 +75,78 @@ _.extend(Negotiations,{
     }
     var conversation = Conversations.findOne({uid: this.cuid});
     var conversationProxy = ConversationProxy.findUserConversationProxy(buyerId,conversation.partnerUID);
-    return conversationProxy.do_negotiation(this.uid,transition,_.extend(parameters,{kind: this.kind}));
+    return conversationProxy.doNegotiation(this.uid,transition,_.extend(parameters,{kind: this.kind}));
   },
-  webhookUpdate: function(response) {
-    var negotiation = Negotiations.find({uid: response.nuid, kind: response.kind});
+  webhookUpdate: function(response,negotiation) {
+    if (!negotiation) {
+      console.log("Finding negotiation: ", {uid: response.nuid, kind: response.kind});
+       negotiation = Negotiations.findOne({uid: response.nuid, kind: response.kind});
+    }
     if (!negotiation) {
       return false;
     }
     
+    console.log("   negotiation = ",negotiation);
+    console.log("   response = ",response);
+    
     var set = {
-      bid: response.bid,
-      otherBid: response.other_bid,
+      bid: Currency.parseStr(response.bid),
+      otherBid: Currency.parseStr(response.other_bid),
+      saving: Currency.parseStr(response.saving),
       state: response.state,
       availableTransitions: response.available_transitions,
       successData: response.success_data,
       cancelData: response.cancel_data,
-      couponPopupData: coupon_popup_data,
-      lastMessage: Negotiations.extractMessages(negotiation._id,response.messages,OfferJar.UI.keepAllMessages),
+      couponPopupData: response.coupon_popup_data,
+      isWaiting: false
     }
+    
+    var ret = Negotiations.update(negotiation._id,{ $set: set });
+    Negotiations.extractMessages(negotiation._id,response.messages,OfferJar.UI.keepAllMessages);
     if (OfferJar.UI.keepHistory) {
-      Negotiations.extractHistory(response.history);
+      Negotiations.extractHistory(negotiation._id,response.history);
     }
+    
     return true;
   },
-  refreshNegotiation: function(uid,kind) {
+  refreshNegotiation: function(uid,kind,userId) {
     if (!kind) kind = 'buy';
-    var negotiation = Negotiations.find({uid: response.nuid, kind: response.kind});
+    var qry = {uid: uid, kind: kind};
+    if (userId) {
+      qry.bidderId = userId;
+    }
+    var negotiation = Negotiations.findOne(qry);
     if (negotiation) {
+      //console.log("Negotiation: ",negotiation);
       var conversation = Conversations.findOne({uid: negotiation.cuid});
-      var conversationProxy = ConversationProxy.findUserConversationProxy(negotiation.bidderId,conversation.partnerUID);
+      var conversationProxy = ConversationProxy.findOrCreateUserConversationProxy(negotiation.bidderId,conversation.partnerUID);
+      //console.log("ConversationProxy: ",conversationProxy);
 
-      var poll = conversationProxy.get_negotiation_poll(uid,{kind: kind, last_id: negotiation.lastMessage && negotiation.lastMessage.id}).data;
+      var lastMessage = negotiation.lastMessage();
+      var pollParams = { kind: kind };
+      if (lastMessage && lastMessage.id) {
+        pollParams.last_id = lastMessage.id;
+      } else {
+        pollParams.last_id = -1;
+      }
+      var poll = conversationProxy.getNegotiationPoll(uid,pollParams).data;
       if (poll && _.has(poll,'conversation_payload')) {
-        Negotiations.webhookUpdate(poll.conversation_payload);
+        Negotiations.webhookUpdate(poll.conversation_payload,negotiation);
       }
     }
   },
   extractMessages: function(negotiationId,messages,keepAll) {
+    var lastMessage = _.max(messages, function(message) { return message.id });
+    //console.log('lastMessage = ',lastMessage);
+    if (!_.isObject(lastMessage)) {
+      return lastMessage;
+    }
     if (keepAll) {
       NegotiationsMessages.insertIfNotExists(negotiationId,messages);
+    } else {
+      NegotiationsMessages.update({negotiationId: negotiationId},_.extend({negotiationId: negotiationId},lastMessage),{upsert: true});
     }
-    return _.max(messages, function(message) { return message.id });
+    return lastMessage;
   },
   extractHistory: function(negotiationId,historyList) {
     return NegotiationsHistory.insertIfNotExists(negotiationId,historyList);
@@ -102,26 +163,25 @@ Meteor.methods({
     if (this.userId===null) {
       throw Meteor.Error("not-allowed","You must be signed-up to perform a negotiation");
     }
+    if (_.isNull(bid)) bid = undefined;
+    if (_.isNull(partnerUID)) partnerUID = undefined;
+    console.log("User: ",this.userId," buid = ",buid," bid = ",bid," partnerUID = ",partnerUID);
     check(buid,OfferJar.UI.uidCheck);
     check(bid,Match.Optional(Match.OneOf(Number,Currency.LegalMoneyString)));
     check(partnerUID,Match.Optional(OfferJar.UI.uidCheck));
-    return Negotiations.initiateBuyerNegotiation(this.userId,buid,bid,partner);
+    return Negotiations.initiateBuyerNegotiation(this.userId,buid,bid,partnerUID);
+  },
+  refreshNegotiation: function(nuid,kind) {
+    if (this.userId===null) {
+      throw Meteor.Error("not-allowed","You must be signed-up to perform a negotiation");
+    }
+    Negotiations.refreshNegotiation(nuid,kind,this.userId);
+    return true;
   }
 });
 
-if (OfferJar.UI.keepAllMessages || OfferJar.UI.keepHistory) {
-  var findForNegotiation = function(negotiationId,options) {
-    var defaults = {sort: [['id', 'desc']]};
-    if (!options) {
-      options = defaults;
-    } else {
-      _.defaults(options,defaults);
-    }
-    
-    return this.find({negotiationId: negotiationId},options);
-  }
-
-  var insertIfNotExists = function(negotiationId,list) {
+_.extend(NegotiationsMessages,{
+  insertIfNotExists: function(negotiationId,list) {
     var cursor = this.find({id: { $in: _.pluck(list,'id')}});
     var idHash = {};
     var counter = 0;
@@ -133,35 +193,86 @@ if (OfferJar.UI.keepAllMessages || OfferJar.UI.keepHistory) {
         this.insert(_.extend(item,{negotiationId: negotiationId}));
         counter++;
       }
-    });
+    },this);
     return counter;
-  };
-  
-  if (OfferJar.UI.keepAllMessages) {
-    _.extend(NegotiationsMessages,{
-      insertIfNotExists: insertIfNotExists,
-      findForNegotiation: findForNegotiation
-    });
+  },
+  findForNegotiation: function(negotiationId,options) {
+    var defaults = {sort: [['id', 'desc']]};
+    if (!options) {
+      options = defaults;
+    } else {
+      _.defaults(options,defaults);
+    }
+    
+    return this.find({negotiationId: negotiationId},options);
   }
-  
-  if (OfferJar.UI.keepHistory) {
-    _.extend(NegotiationsHistory,{
-      insertIfNotExists: insertIfNotExists,
-      findForNegotiation: findForNegotiation
-    });
-  }
-  
-  if (OfferJar.UI.keepAllMessages || OfferJar.UI.keepHistory) {
-    Meteor.publish("offerjar.negotiations.info", function(negotiationId) {
-      var cursors = [];
-      if (OfferJar.UI.keepAllMessages) {
-        cursors.push(NegotiationsMessages.findForNegotiation(negotiationId));
+});
+
+
+if (OfferJar.UI.keepHistory) {
+  _.extend(NegotiationsHistory,{
+    insertIfNotExists: function(negotiationId,list) {
+      var historyRec = this.findOne({negotiationId: negotiationId});
+      if (!historyRec) {  
+        this.insert({
+          negotiationId: negotiationId,
+          history: list
+        });
+      } else {
+        var idx1 = 0;
+        var idx2 = 0;
+        var clist = historyRec.history;
+        while (idx1<list.length && idx2<clist.length) {
+          if (list[idx1][0]>clist[idx2][0]) {
+            break;
+          } else if (list[idx1][0]<clist[idx2][0]) {
+            this.update(historyRec._id), {
+              $push: {
+                history: {
+                  $each: [list[idx1]],
+                  $position: idx2
+                }
+              }
+            }
+            idx1++;
+          } else {
+            idx1++;
+            idx2++;
+          }
+        }
+        if (idx2<clist.length) {
+          // This should not happen we will create a new array!!!
+          list  = clist.slice(0,idx2-1).concat(list.slice(idx1));
+          this.update(historyRec._id,{
+            $set: {
+              history: list
+            }
+          });
+        } else if (idx1<list.length) {
+          list = list.slice(idx1);
+          this.update(historyRec._id,{
+            $push: {
+              history: {
+                $each: list
+              }
+            }
+          })
+        } else {
+          list = [];
+        }
       }
-      if (OfferJar.UI.keepHistory) {
-        cursors.push(NegotiationsHistory.findForNegotiation(negotiationId));
-      }
-      return cursors;
-    });
-  }
+      return list.length;
+    }
+  });
 }
+  
+Meteor.publish("offerjar.negotiations.info", function(negotiationId) {
+  var cursors = [];
+  cursors.push(NegotiationsMessages.findForNegotiation(negotiationId));
+  if (OfferJar.UI.keepHistory) {
+    cursors.push(NegotiationsHistory.find({negotiationId: negotiationId}));
+  }
+  return cursors;
+});
+
 

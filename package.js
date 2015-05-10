@@ -11,7 +11,8 @@ Package.describe({
 });
 
 Npm.depends({
-  'raw-body': '1.3.0'
+  'raw-body': '1.3.0',
+  'fibers': '1.0.5'
 });
 
 Package.onUse(function(api) {
@@ -20,11 +21,19 @@ Package.onUse(function(api) {
   api.use('ronenm:offerjar-api@0.1.0');
   api.use('ronenm:offerjar-user-affinity@0.1.0');
   api.use('ronenm:statefull-collection@0.0.1');
+  api.imply([
+    'ronenm:currency',
+    'ronenm:offerjar-user-affinity',
+    'ronenm:statefull-collection'
+  ]);
   api.use("underscore");
   api.use("accounts-base");
-  api.use("iron:router");
+  api.use("iron:router@1.0.7");
+  api.use("reactive-var");
   api.use("mongo");
   api.use("check");
+  api.use("aldeed:simple-schema@1.3.2");
+  api.use("aldeed:collection2@2.3.0");
   api.use("jparker:crypto-md5",'server');
   api.use([
     'blaze',

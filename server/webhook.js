@@ -3,10 +3,11 @@
 //////////////////////////////////////////////////////////////
 
 var getRawBody = Npm.require('raw-body');
+Fiber = Npm.require('fibers');
 
 authenticateOfferJarWebhook = function (req, res, next) { 
   if (_.has(req.headers,'content-md5')) {
-    return getTawBody(req,'utf-8',function(err,str) {
+    return getRawBody(req,'utf-8',function(err,str) {
       if (err) {
         err.status = 400;
         return next(err);
@@ -16,36 +17,42 @@ authenticateOfferJarWebhook = function (req, res, next) {
       console.log("   String is: %s",str);
       var json = JSON.parse(str);
       console.log("   JSON is: %j",json);
-      var conversation = Conversations.findOne({uid: json.uid});
-      if (conversation) {
-        var md5 = CryptoJS.MD5().toString();
-        console.log("   MD5 Check:");
-        console.log("      Header:      %s",req.headers['content-md5']);
-        console.log("      Calculated:  %s",md5);
-        if (md5===req.headers['content-md5']) {
-          req.body = json;
-          req._body = true; // Flag as parsed already
-          return next();
+      var conversation;
+      
+      Fiber(function() {
+        conversation = Conversations.findOne({uid: json.cuid});
+        if (conversation) {
+          var md5 = CryptoJS.MD5(conversation.token+str).toString();
+          console.log("   MD5 Check:");
+          console.log("      Header:      %s",req.headers['content-md5']);
+          console.log("      Calculated:  %s",md5);
+          if (md5===req.headers['content-md5']) {
+            req.body = json;
+            req._body = true; // Flag as parsed already
+            return next();
+          } else {
+            err = new Error("MD5 Mismtach!");
+            err.status = 412;
+            return next(err);
+          }
         } else {
-          err = new Error("MD5 Mismtach!");
-          err.status = 412;
+          err = new Error("Unable to find conversation resource " + json.cuid);
+          err.status = 400;
           return next(err);
         }
-      } else {
-        err = new Error("Unable to find conversation resource + json.uid");
-        err.status = 400;
-        return next(err);
-      }
+      }).run();
     });
+      
   } else {
     return next();
   }
 }
 
 var offerJarWebhookPostAction = function() {
-  var body = this.body;
+  var body = this.request.body;
+  console.log("body = ",body);
   if (_.isObject(body) && _.has(body,'nuid')) {
-    Negotiations.webhookUpdate(body);
+    return Negotiations.webhookUpdate(body);
   } else {
     throw Meteor.Error('webhook-error',"Webhook structure is incorrect!");
   }
@@ -59,13 +66,14 @@ OfferJar.UI.webhook = {
   authenticate: true,
   skipAction: false,
   url: function() {
-    router.routes[this.name].url();
+    return OfferJar.UI.webhook.router.routes[this.name].url();
   }
 }
 
 OfferJar.UI.webhook.setup = function(router, options) {
   options = _.extend(OfferJar.UI.webhook, options);
-
+  OfferJar.UI.webhook.router  = router;
+  
   if (!options.skipAction) {
     router.route(options.path,{name: options.name, where: 'server'})
       .post(options.action);

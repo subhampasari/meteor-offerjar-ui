@@ -4,20 +4,22 @@
  *   
  */
 
-OfferJar.UI.Buttons = Buttons = new Mongo.Collection("offerjar.buttons");
+OfferJar.UI.Buttons = Buttons = new Mongo.Collection(null);
 
 Global = OfferJar.UI.Global = new OfferJar.Global();
 
 Buttons.findOrDownloadButton = function(buid) {
-  var cursor = this.find({button_uid: buid},{limit: 1});
+  var self = this;
+  var cursor = self.find({button_uid: buid},{limit: 1});
+  
   if (cursor.count()===0) {
-    Global.getButton(buid,{image_style: 'all'}, function(error,data) {
+    Global.getButton(buid,{image_style: 'all'}, function(error,result) {
       if (error) {
         throw error;
-      } else if (!data.button){ 
+      } else if (!result.data.button){ 
         throw new Meteor.Error('500',"Internal server error. Unable to get the button information");
       } else {
-        Buttons.insert(data.button);
+        self.insert(result.data.button);
       }
     });
     return null;
@@ -26,4 +28,13 @@ Buttons.findOrDownloadButton = function(buid) {
   }
 }
 
-OfferJar.UI.currentButton = new ReactiveVar(null,twoOfferJarRecordsEq);
+OfferJar.UI.currentButton = new ReactiveVar(null,twoOfferJarRecordsEq('button_uid'));
+
+Meteor.startup(function() {
+  Tracker.autorun(function() {
+    var negotiation = OfferJar.UI.currentNegotiation.get();
+    if (_.isObject(negotiation) && _.has(negotiation,'buid')) {
+      OfferJar.UI.currentButton.set(Buttons.findOrDownloadButton(negotiation.buid));
+    }
+  });
+});

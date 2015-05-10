@@ -1,47 +1,54 @@
+if (!_.has(Template,'registerHelpers')) {
+  Template.registerHelpers = function(helpers) {
+    _.map(helpers, function(func,name) {
+      Template.registerHelper(name,func);
+    });
+  }
+}
 // General helpers
-Template.registerHelper({
-  currentButton: function() { return OfferJar.UI.currentButton.get(); },
-  currentNegoitation: function() { return OfferJar.UI.currentNegoitation.get(); },
-  negotiationHistory: function(sort) {
-    if (!sort) {
-      sort = {id: 1};
-    }
+Template.registerHelpers({
+  currentButton: function() {
+    return OfferJar.UI.currentButton.get();
+  },
+  currentNegotiation: function() {
+    return OfferJar.UI.currentNegotiation.get();
+  },
+  negotiationHistory: function(reverse) {
     if (OfferJar.UI.keepHistory) {
-      // Publish only publishes history for requested negotiation
-      return NegotiationsHistory.find({},sort);
+      var negotiation = OfferJar.UI.currentNegotiation.get();
+      if (negotiation) {
+        return negotiation.getHistory(reverse);
+      } else {
+        return null;
+      }
     } else {
       return null; // This should not happen but if it does, we will be forgiving in this case
     }
   },
   negotiationMessages: function(sort) {
-    if (!sort) {
-      sort = {id: 1};
-    }
-    if (OfferJar.UI.keepAllMessages) {
-      // Publish only publishes history for requested negotiation
-      return NegotiationsMessages.find({},sort);
-    } else {
-      return null; // This should not happen but if it does, we will be forgiving in this case
-    }
+    if (!sort) { sort = {id: -1}; } // By default sort from latest message to the first one 
+    return NegotiationsMessages.find({},sort);
   },
-  buttonField: function(field) {
-    var button = OfferJar.UI.currentButton.get();
-    return _.isObject(button) ? button[field] : null
-  },
-  negotiationField: function(field) {
-    var negotiation = OfferJar.UI.currentNegoitation.get();
-    return _.isObject(negotiation) ? negotiation[field] : null
+  negotiationInfoReady: function() {
+    return negotiationInfoSubscriptionReady.get();
   },
   isOpenForNegotiation: function() {
-    var negotiation = OfferJar.UI.currentNegoitation.get();
-    return _.isObject(negotiation) ? negotiation.isOpenForNegotiation() : false
+    return _.isObject(this) ? this.isOpenForNegotiation: true;
   },
   negotiationAllowedTransitions: function() {
-    var negotiation = OfferJar.UI.currentNegoitation.get();
-    return _.isObject(negotiation) ? negotiation.getAllowedTransitions(Meteor.userId()) : [];
+    return _.isObject(this) ? this.getAllowedTransitions(Meteor.userId()) : [];
   },
   negotiationCanTransition: function(transition) {
-    var negotiation = OfferJar.UI.currentNegoitation.get();
-    return _.isObject(negotiation) ? negotiation.canTransition(Meteor.userId(),transition) : false;
+    return _.isObject(this) ? this.canTransition(Meteor.userId(),transition) : false;
+  },
+  negotiationCurrency: function() {
+    var negotiation = OfferJar.UI.currentNegotiation.get();
+    if (!negotiation || !negotiation.currency) {
+      var button  = OfferJar.UI.currentButton.get();
+      return OfferJar.UI.findOrAddCurrency(button.currency);
+    }
+    
+    return OfferJar.UI.findOrAddCurrency(negotiation.currency);
   }
 });
+
