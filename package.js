@@ -34,7 +34,7 @@ Package.onUse(function(api) {
   api.use("check");
   api.use("aldeed:simple-schema@1.3.2");
   api.use("aldeed:collection2@2.3.0");
-  api.use("jparker:crypto-md5",'server');
+  api.use("jparker:crypto-md5@0.1.1",'server');
   api.use([
     'blaze',
     'spacebars',
