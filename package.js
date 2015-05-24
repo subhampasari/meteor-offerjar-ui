@@ -2,7 +2,7 @@ Package.describe({
   name: 'ronenm:offerjar-ui',
   version: '0.0.2',
   // Brief, one-line summary of the package.
-  summary: '',
+  summary: 'Basic UI for OfferJar integration',
   // URL to the Git repository containing the source code for this package.
   git: '',
   // By default, Meteor will default to using README.md for documentation.
