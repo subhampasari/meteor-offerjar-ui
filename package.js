@@ -1,6 +1,6 @@
 Package.describe({
   name: 'ronenm:offerjar-ui',
-  version: '0.0.1',
+  version: '0.0.2',
   // Brief, one-line summary of the package.
   summary: '',
   // URL to the Git repository containing the source code for this package.
@@ -18,8 +18,8 @@ Npm.depends({
 Package.onUse(function(api) {
   api.versionsFrom('1.0.3.1');
   api.use('ronenm:currency@0.1.2');
-  api.use('ronenm:offerjar-api@0.1.0');
-  api.use('ronenm:offerjar-user-affinity@0.1.0');
+  api.use('ronenm:offerjar-api@1.0.0');
+  api.use('ronenm:offerjar-user-affinity@0.2.1');
   api.use('ronenm:statefull-collection@0.0.1');
   api.imply([
     'ronenm:currency',
