@@ -1,6 +1,6 @@
 Package.describe({
   name: 'ronenm:offerjar-ui',
-  version: '0.0.3',
+  version: '0.0.4',
   // Brief, one-line summary of the package.
   summary: 'Basic UI for OfferJar integration',
   // URL to the Git repository containing the source code for this package.
@@ -16,7 +16,7 @@ Npm.depends({
 });
 
 Package.onUse(function(api) {
-  api.versionsFrom('1.0.3.1');
+  api.versionsFrom('1.3.1');
   api.use('ronenm:currency@0.1.2');
   api.use('ronenm:offerjar-api@1.0.0');
   api.use('ronenm:offerjar-user-affinity@0.1.2');

@@ -54,7 +54,7 @@ var offerJarWebhookPostAction = function() {
   if (_.isObject(body) && _.has(body,'nuid')) {
     return Negotiations.webhookUpdate(body);
   } else {
-    throw Meteor.Error('webhook-error',"Webhook structure is incorrect!");
+    throw new Meteor.Error('webhook-error',"Webhook structure is incorrect!");
   }
 }
 
